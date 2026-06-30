@@ -880,7 +880,7 @@ async function generateAndDownloadPDF(cert, inscription, course) {
     templateContainer.style.background = '#ffffff';
     templateContainer.style.fontFamily = "'Poppins', 'Inter', sans-serif";
     
-    const qrUrl = `${window.location.origin}/verificar/${cert.code}`;
+   const qrUrl = `${window.location.origin}/verificar.html?code=${cert.code}`;
     const formattedDate = formatDate(cert.generated_at);
     
     templateContainer.innerHTML = `
