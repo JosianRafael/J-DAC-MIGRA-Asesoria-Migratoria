@@ -1,3 +1,5 @@
+// main.js
+
 // ============================================================
 // ===== FUNCIONES DE SUBIDA DE ARCHIVOS =====
 // ============================================================
@@ -271,6 +273,383 @@ function closeImageModal() {
 }
 
 // ============================================================
+// ===== NUEVA FUNCIÓN: VER CURSOS ARCHIVADOS =====
+// ============================================================
+
+let archivedCoursesModalInstance = null;
+
+function openArchivedCourses() {
+  // Crear modal personalizado con SweetAlert2
+  archivedCoursesModalInstance = Swal.fire({
+    title: '📦 Cursos Archivados',
+    html: `
+      <div id="archivedCoursesContent" style="text-align:left; max-height:500px; overflow-y:auto;">
+        <div style="text-align:center; padding:20px; color:#6a7f94;">
+          <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;"></i>
+          <p>Cargando cursos archivados...</p>
+        </div>
+      </div>
+    `,
+    width: '800px',
+    showConfirmButton: false,
+    showCloseButton: true,
+    confirmButtonColor: '#c9a96e',
+    didOpen: async () => {
+      await loadArchivedCoursesList();
+    },
+    willClose: () => {
+      archivedCoursesModalInstance = null;
+    }
+  });
+}
+
+async function loadArchivedCoursesList() {
+  // Verificar si el contenedor existe en el DOM
+  const container = document.getElementById('archivedCoursesContent');
+  if (!container) {
+    console.warn('El contenedor archivedCoursesContent no existe en el DOM');
+    return;
+  }
+  
+  try {
+    // Obtener cursos archivados
+    const { data: courses, error } = await SUPABASE
+      .from('products')
+      .select('*')
+      .eq('status', 'Archivado')
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      throw new Error('Error al cargar cursos archivados');
+    }
+
+    if (!courses || courses.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding:40px; color:#6a7f94;">
+          <i class="fas fa-inbox" style="font-size:3rem; display:block; margin-bottom:12px;"></i>
+          No hay cursos archivados.
+        </div>
+      `;
+      return;
+    }
+
+    // Obtener conteo de inscripciones y certificados para cada curso
+    let html = '';
+    for (const course of courses) {
+      // Contar inscripciones
+      const { count: inscCount } = await SUPABASE
+        .from('inscriptions')
+        .select('*', { count: 'exact', head: true })
+        .eq('course_id', course.id);
+
+      // Contar certificados
+      const { count: certCount } = await SUPABASE
+        .from('certificates')
+        .select('*', { count: 'exact', head: true })
+        .eq('course_id', course.id);
+
+      html += `
+        <div style="
+          background: #f5f9ff;
+          border-radius: 16px;
+          padding: 16px 20px;
+          margin-bottom: 12px;
+          border-left: 4px solid #c9a96e;
+        ">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+            <div style="flex:1;">
+              <div style="font-weight:700; font-size:1.1rem; color:#0b1e33;">
+                ${course.name}
+                <span style="background:#dc3545; color:white; padding:2px 10px; border-radius:30px; font-size:0.6rem; font-weight:600; margin-left:8px;">ARCHIVADO</span>
+              </div>
+              <div style="font-size:0.85rem; color:#3e5a75; margin-top:4px;">
+                <span><i class="fas fa-calendar"></i> ${course.date || 'Fecha no especificada'}</span>
+                <span style="margin-left:16px;"><i class="fas fa-users"></i> ${inscCount || 0} inscritos</span>
+                <span style="margin-left:16px;"><i class="fas fa-certificate"></i> ${certCount || 0} certificados</span>
+              </div>
+              <div style="font-size:0.8rem; color:#6a7f94; margin-top:4px;">
+                <i class="fas fa-tag"></i> ${course.category || 'Sin categoría'} · 
+                <i class="fas fa-level-up-alt"></i> ${course.level || 'Básico'} · 
+                <i class="fas fa-clock"></i> ${course.modality || 'Online'}
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button onclick="restoreArchivedCourseFromModal('${course.id}')" style="
+                background:#28a745;
+                color:white;
+                padding:6px 16px;
+                border:none;
+                border-radius:30px;
+                font-weight:600;
+                font-size:0.75rem;
+                cursor:pointer;
+                transition:all 0.2s;
+              ">
+                <i class="fas fa-undo"></i> Restaurar
+              </button>
+              <button onclick="confirmPermanentDelete('${course.id}', '${course.name.replace(/'/g, "\\'")}')" style="
+                background:#dc3545;
+                color:white;
+                padding:6px 16px;
+                border:none;
+                border-radius:30px;
+                font-weight:600;
+                font-size:0.75rem;
+                cursor:pointer;
+                transition:all 0.2s;
+              ">
+                <i class="fas fa-trash-alt"></i> Eliminar permanentemente
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+
+  } catch (err) {
+    console.error('Error cargando cursos archivados:', err);
+    container.innerHTML = `
+      <div style="text-align:center; padding:20px; color:#721c24; background:#f8d7da; border-radius:12px;">
+        <i class="fas fa-exclamation-circle"></i> Error al cargar cursos archivados: ${err.message}
+      </div>
+    `;
+  }
+}
+
+// ============================================================
+// ===== RESTAURAR CURSO ARCHIVADO DESDE MODAL =====
+// ============================================================
+
+async function restoreArchivedCourseFromModal(courseId) {
+  try {
+    const result = await Swal.fire({
+      title: '¿Restaurar este curso?',
+      text: 'El curso volverá a estar disponible en la página pública con estado "Publicado".',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#28a745',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: '✅ Sí, restaurar',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (result.isConfirmed) {
+      const success = await restoreArchivedCourse(courseId);
+      
+      if (success) {
+        await Swal.fire({
+          icon: 'success',
+          title: '¡Curso restaurado!',
+          text: 'El curso está nuevamente disponible en la página pública.',
+          timer: 2000,
+          showConfirmButton: false
+        });
+        
+        // Recargar la lista de archivados (si el modal sigue abierto)
+        const container = document.getElementById('archivedCoursesContent');
+        if (container) {
+          await loadArchivedCoursesList();
+        }
+        
+        // Actualizar dashboard
+        loadDashboardStats();
+        // Actualizar listas
+        renderCourseList();
+        renderCourses();
+        renderEvents();
+        updateCourseFilter();
+      } else {
+        throw new Error('Error al restaurar el curso');
+      }
+    }
+  } catch (err) {
+    console.error('Error en restoreArchivedCourseFromModal:', err);
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: err.message || 'No se pudo restaurar el curso.',
+      confirmButtonColor: '#c9a96e'
+    });
+  }
+}
+
+// ============================================================
+// ===== ELIMINAR PERMANENTEMENTE CON CONFIRMACIÓN =====
+// ============================================================
+
+function confirmPermanentDelete(courseId, courseName) {
+  Swal.fire({
+    title: '⚠️ ELIMINAR PERMANENTEMENTE',
+    html: `
+      <div style="text-align:left;">
+        <p style="color:#dc3545; font-weight:700; font-size:1.1rem;">
+          <i class="fas fa-exclamation-triangle"></i> Esta acción es irreversible
+        </p>
+        <p style="margin-top:8px;">
+          Estás a punto de eliminar permanentemente el curso:
+          <strong style="color:#0b1e33;">${courseName}</strong>
+        </p>
+        <div style="
+          background: #f8d7da;
+          border: 1px solid #f5c6cb;
+          border-radius: 12px;
+          padding: 12px 16px;
+          margin: 12px 0;
+          color: #721c24;
+        ">
+          <i class="fas fa-info-circle"></i>
+          Esta acción eliminará el curso y <strong>toda la información relacionada</strong>:
+          <ul style="margin:8px 0 0 20px; font-size:0.9rem;">
+            <li>Inscripciones asociadas</li>
+            <li>Certificados emitidos</li>
+            <li>Logs de certificados</li>
+          </ul>
+          <p style="margin-top:8px; font-weight:700;">¡No podrá recuperarse!</p>
+        </div>
+        <div style="margin-top:16px;">
+          <label style="font-weight:600; color:#0b1e33;">
+            Escribe <strong style="color:#dc3545;">ELIMINAR</strong> para confirmar:
+          </label>
+          <input type="text" id="confirmDeleteInput" style="
+            width:100%;
+            padding:10px 14px;
+            border-radius:30px;
+            border:2px solid #dbe4ed;
+            font-family:'Inter',sans-serif;
+            font-size:0.95rem;
+            margin-top:6px;
+            transition:border 0.2s;
+          " placeholder="Escribe ELIMINAR aquí" />
+        </div>
+      </div>
+    `,
+    width: '550px',
+    showCancelButton: true,
+    confirmButtonColor: '#dc3545',
+    cancelButtonColor: '#6c757d',
+    confirmButtonText: '🗑️ Eliminar permanentemente',
+    cancelButtonText: 'Cancelar',
+    preConfirm: () => {
+      const input = document.getElementById('confirmDeleteInput');
+      if (!input) return false;
+      const value = input.value.trim();
+      if (value !== 'ELIMINAR') {
+        Swal.showValidationMessage('❌ Debes escribir exactamente "ELIMINAR" para confirmar');
+        return false;
+      }
+      return true;
+    },
+    didOpen: () => {
+      setTimeout(() => {
+        const input = document.getElementById('confirmDeleteInput');
+        if (input) input.focus();
+      }, 300);
+    }
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      await permanentDeleteCourse(courseId, courseName);
+    }
+  });
+}
+
+async function permanentDeleteCourse(courseId, courseName) {
+  try {
+    Swal.fire({
+      title: 'Eliminando curso...',
+      text: 'Por favor espera, esto puede tomar unos segundos.',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+
+    // 1. Obtener todos los certificados del curso
+    const { data: certificates, error: certError } = await SUPABASE
+      .from('certificates')
+      .select('id')
+      .eq('course_id', courseId);
+
+    if (certError) {
+      throw new Error('Error al obtener certificados del curso');
+    }
+
+    // 2. Eliminar logs de certificados (si hay certificados)
+    if (certificates && certificates.length > 0) {
+      const certIds = certificates.map(c => c.id);
+      const { error: logError } = await SUPABASE
+        .from('certificates_log')
+        .delete()
+        .in('certificate_id', certIds);
+
+      if (logError) {
+        console.warn('Error eliminando logs de certificados:', logError);
+      }
+    }
+
+    // 3. Eliminar certificados
+    const { error: deleteCertsError } = await SUPABASE
+      .from('certificates')
+      .delete()
+      .eq('course_id', courseId);
+
+    if (deleteCertsError) {
+      throw new Error('Error al eliminar certificados');
+    }
+
+    // 4. Eliminar inscripciones
+    const { error: deleteInscError } = await SUPABASE
+      .from('inscriptions')
+      .delete()
+      .eq('course_id', courseId);
+
+    if (deleteInscError) {
+      throw new Error('Error al eliminar inscripciones');
+    }
+
+    // 5. Eliminar el curso
+    const { error: deleteCourseError } = await SUPABASE
+      .from('products')
+      .delete()
+      .eq('id', courseId);
+
+    if (deleteCourseError) {
+      throw new Error('Error al eliminar el curso');
+    }
+
+    await Swal.fire({
+      icon: 'success',
+      title: '¡Curso eliminado permanentemente!',
+      text: `El curso "${courseName}" y toda su información relacionada han sido eliminados.`,
+      timer: 3000,
+      showConfirmButton: false
+    });
+
+    // Recargar listas (verificar si el modal sigue abierto)
+    const container = document.getElementById('archivedCoursesContent');
+    if (container) {
+      await loadArchivedCoursesList();
+    }
+    
+    loadDashboardStats();
+    renderCourseList();
+    renderCourses();
+    renderEvents();
+    updateCourseFilter();
+
+  } catch (err) {
+    console.error('Error en permanentDeleteCourse:', err);
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: err.message || 'No se pudo eliminar el curso permanentemente.',
+      confirmButtonColor: '#c9a96e'
+    });
+  }
+}
+
+// ============================================================
 // ===== INICIALIZACIÓN =====
 // ============================================================
 
@@ -301,15 +680,13 @@ function setupContactForm() {
   if (!contactForm) return;
 
   contactForm.addEventListener('submit', function(e) {
-    e.preventDefault(); // Prevenir la recarga de la página
+    e.preventDefault();
 
-    // Obtener los valores del formulario
     const name = this.querySelector('input[type="text"]')?.value?.trim() || '';
     const email = this.querySelector('input[type="email"]')?.value?.trim() || '';
     const phone = this.querySelector('input[type="tel"]')?.value?.trim() || '';
     const message = this.querySelector('textarea')?.value?.trim() || '';
 
-    // Validar que los campos requeridos estén llenos
     if (!name || !email) {
       Swal.fire({
         icon: 'warning',
@@ -320,18 +697,15 @@ function setupContactForm() {
       return;
     }
 
-    // Obtener el número de WhatsApp desde la configuración
     const whatsappElement = document.getElementById('contactWhatsapp');
-    let whatsappNumber = '+57 300 123 4567'; // Número por defecto
+    let whatsappNumber = '+57 300 123 4567';
 
     if (whatsappElement) {
       whatsappNumber = whatsappElement.textContent.trim();
     }
 
-    // Limpiar el número (solo dígitos)
     const cleanNumber = whatsappNumber.replace(/[^0-9]/g, '');
 
-    // Construir el mensaje para WhatsApp
     let whatsappMessage = `📋 *NUEVA CONSULTA - JADAC MIGRA*%0A%0A`;
     whatsappMessage += `👤 *Nombre:* ${encodeURIComponent(name)}%0A`;
     whatsappMessage += `📧 *Correo:* ${encodeURIComponent(email)}%0A`;
@@ -340,10 +714,8 @@ function setupContactForm() {
     }
     whatsappMessage += `%0A💬 *Mensaje:*%0A${encodeURIComponent(message || 'Sin mensaje adicional')}`;
 
-    // Crear el enlace de WhatsApp
     const whatsappUrl = `https://wa.me/${cleanNumber}?text=${whatsappMessage}`;
 
-    // Mostrar mensaje de éxito antes de redirigir
     Swal.fire({
       icon: 'success',
       title: '¡Mensaje enviado!',
@@ -351,21 +723,102 @@ function setupContactForm() {
       timer: 2000,
       showConfirmButton: false
     }).then(() => {
-      // Abrir WhatsApp en una nueva ventana
       window.open(whatsappUrl, '_blank');
-      
-      // Limpiar el formulario
       contactForm.reset();
     });
   });
 }
 
-// Llamar a la función cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', function() {
-  setupContactForm();
-});
+// ============================================================
+// ===== FUNCIÓN PARA ACTUALIZAR DASHBOARD (CORREGIDA) =====
+// ============================================================
 
+async function loadDashboardStats() {
+  try {
+    // Obtener TODOS los cursos para saber cuáles están archivados
+    const { data: allCourses, error: coursesError } = await SUPABASE
+      .from('products')
+      .select('id, status');
 
+    if (coursesError) {
+      console.error('Error obteniendo cursos:', coursesError);
+      return;
+    }
+
+    // Filtrar cursos NO archivados
+    const activeCourseIds = allCourses
+      .filter(c => c.status !== 'Archivado')
+      .map(c => c.id);
+
+    const archivedCourseIds = allCourses
+      .filter(c => c.status === 'Archivado')
+      .map(c => c.id);
+
+    // Cursos activos totales
+    const activeCoursesCount = activeCourseIds.length;
+
+    // Inscripciones de cursos activos
+    let activeInscriptionsCount = 0;
+    if (activeCourseIds.length > 0) {
+      const { count: inscCount } = await SUPABASE
+        .from('inscriptions')
+        .select('*', { count: 'exact', head: true })
+        .in('course_id', activeCourseIds);
+      activeInscriptionsCount = inscCount || 0;
+    }
+
+    // Certificados de cursos activos
+    let activeCertificatesCount = 0;
+    if (activeCourseIds.length > 0) {
+      const { count: certCount } = await SUPABASE
+        .from('certificates')
+        .select('*', { count: 'exact', head: true })
+        .in('course_id', activeCourseIds);
+      activeCertificatesCount = certCount || 0;
+    }
+
+    // Cursos finalizados (solo de cursos activos)
+    const finishedCourses = allCourses.filter(c => 
+      c.status === 'Finalizado' && !archivedCourseIds.includes(c.id)
+    );
+    const finishedCount = finishedCourses.length;
+
+    // Cursos archivados totales
+    const archivedCount = archivedCourseIds.length;
+
+    // Actualizar elementos del DOM (verificar que existen)
+    const totalCoursesEl = document.getElementById('dashTotalCourses');
+    const totalInscriptionsEl = document.getElementById('dashTotalInscriptions');
+    const totalCertificatesEl = document.getElementById('dashTotalCertificates');
+    const finishedCoursesEl = document.getElementById('dashFinishedCourses');
+
+    if (totalCoursesEl) totalCoursesEl.textContent = activeCoursesCount;
+    if (totalInscriptionsEl) totalInscriptionsEl.textContent = activeInscriptionsCount;
+    if (totalCertificatesEl) totalCertificatesEl.textContent = activeCertificatesCount;
+    if (finishedCoursesEl) finishedCoursesEl.textContent = finishedCount;
+
+    // Actualizar el botón de cursos archivados
+    const archivedBtn = document.querySelector('.archived-courses-btn');
+    if (archivedBtn) {
+      archivedBtn.innerHTML = `📦 Ver cursos archivados (${archivedCount})`;
+      archivedBtn.style.display = archivedCount > 0 ? 'inline-flex' : 'none';
+    }
+
+  } catch (err) {
+    console.error('Error cargando dashboard:', err);
+  }
+}
+
+// ============================================================
+// ===== EXPORTAR FUNCIONES GLOBALES =====
+// ============================================================
+
+window.openArchivedCourses = openArchivedCourses;
+window.loadArchivedCoursesList = loadArchivedCoursesList;
+window.restoreArchivedCourseFromModal = restoreArchivedCourseFromModal;
+window.confirmPermanentDelete = confirmPermanentDelete;
+window.permanentDeleteCourse = permanentDeleteCourse;
+window.loadDashboardStats = loadDashboardStats;
 
 // ============================================================
 // ===== EVENTOS DE MODALES =====
@@ -409,6 +862,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderInscriptions();
     updateCourseFilter();
     document.getElementById('adminModal').classList.add('active');
+    // Cargar dashboard al abrir el panel
+    loadDashboardStats();
   });
   document.getElementById('closeAdmin').addEventListener('click', () => {
     document.getElementById('adminModal').classList.remove('active');
@@ -519,6 +974,85 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Agregar botón de cursos archivados al dashboard
+  const dashboardContent = document.getElementById('adminTabDashboard');
+  if (dashboardContent) {
+    const statsGrid = dashboardContent.querySelector('div[style*="grid-template-columns"]');
+    if (statsGrid) {
+      // Verificar si el botón ya existe para no duplicarlo
+      const existingBtn = statsGrid.querySelector('.archived-courses-btn');
+      if (!existingBtn) {
+        const archivedBtn = document.createElement('div');
+        archivedBtn.style.gridColumn = 'span 1';
+        archivedBtn.innerHTML = `
+          <button onclick="openArchivedCourses()" class="archived-courses-btn" style="
+            width:100%;
+            height:100%;
+            background: #f5f9ff;
+            border: 2px dashed #c9a96e;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #0b2b4a;
+          ">
+            📦 Ver cursos archivados (0)
+          </button>
+        `;
+        statsGrid.appendChild(archivedBtn);
+      }
+    }
+  }
+
   init();
+  // Cargar dashboard stats después de init
+  setTimeout(loadDashboardStats, 500);
 });
 
+// ============================================================
+// ===== FUNCIÓN PARA VERIFICAR CERTIFICADO POR CÓDIGO =====
+// ============================================================
+
+async function verifyCertificateByCode(code) {
+  try {
+    const { data: cert, error } = await SUPABASE
+      .from('certificate_details')
+      .select('*')
+      .eq('code', code)
+      .maybeSingle();
+
+    if (error || !cert) {
+      return {
+        valid: false,
+        message: '❌ Este certificado no es válido.'
+      };
+    }
+
+    if (cert.status === 'revoked') {
+      return {
+        valid: false,
+        message: '❌ Este certificado ha sido revocado.',
+        cert
+      };
+    }
+
+    return {
+      valid: true,
+      message: '✅ Certificado válido',
+      cert
+    };
+
+  } catch (err) {
+    console.error('Error verificando certificado:', err);
+    return {
+      valid: false,
+      message: '❌ Error al verificar el certificado.'
+    };
+  }
+}
+
+window.verifyCertificateByCode = verifyCertificateByCode;

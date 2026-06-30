@@ -1,9 +1,12 @@
+// inscriptions.js
+
 // ============================================================
 // ===== FUNCIONES DE INSCRIPCIONES =====
 // ============================================================
 
 async function getInscriptions() {
   try {
+    // Obtener todas las inscripciones
     const { data, error } = await SUPABASE
       .from('inscriptions')
       .select('*')
@@ -14,9 +17,72 @@ async function getInscriptions() {
       return [];
     }
 
-    return data || [];
+    // Filtrar inscripciones de cursos que NO estén archivados
+    // Primero obtener todos los cursos
+    const { data: courses, error: coursesError } = await SUPABASE
+      .from('products')
+      .select('id, status');
+
+    if (coursesError) {
+      console.error('Error obteniendo cursos para filtrar:', coursesError);
+      return data || [];
+    }
+
+    // Crear un mapa de cursos archivados
+    const archivedCourseIds = new Set();
+    courses.forEach(c => {
+      if (c.status === 'Archivado') {
+        archivedCourseIds.add(c.id);
+      }
+    });
+
+    // Filtrar inscripciones: solo mostrar las de cursos NO archivados
+    const filteredData = data.filter(inscription => {
+      return !archivedCourseIds.has(inscription.course_id);
+    });
+
+    return filteredData || [];
   } catch (err) {
     console.error('Error en getInscriptions:', err);
+    return [];
+  }
+}
+
+// Obtener TODAS las inscripciones (incluyendo las de cursos archivados) para usos internos
+async function getAllInscriptions() {
+  try {
+    const { data, error } = await SUPABASE
+      .from('inscriptions')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error obteniendo todas las inscripciones:', error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error('Error en getAllInscriptions:', err);
+    return [];
+  }
+}
+
+// Obtener inscripciones de un curso específico (para certificados)
+async function getInscriptionsByCourse(courseId) {
+  try {
+    const { data, error } = await SUPABASE
+      .from('inscriptions')
+      .select('*')
+      .eq('course_id', courseId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error obteniendo inscripciones por curso:', error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error('Error en getInscriptionsByCourse:', err);
     return [];
   }
 }
@@ -80,11 +146,15 @@ async function updateInscriptionStatus(id, status) {
 async function renderInscriptions() {
   const tbody = document.getElementById('inscriptionTableBody');
   const noData = document.getElementById('noInscriptions');
+  
+  // Obtener inscripciones filtradas (sin cursos archivados)
   let inscriptions = await getInscriptions();
+  
   const search = document.getElementById('searchInscription').value.toLowerCase();
   const courseFilter = document.getElementById('filterCourse').value;
   const statusFilter = document.getElementById('filterStatus').value;
 
+  // Aplicar filtros
   inscriptions = inscriptions.filter(i => {
     const nameMatch = i.name.toLowerCase().includes(search);
     const courseMatch = !courseFilter || i.course_id === courseFilter;
@@ -124,7 +194,7 @@ async function renderInscriptions() {
 }
 
 async function viewDetail(id) {
-  const inscriptions = await getInscriptions();
+  const inscriptions = await getAllInscriptions(); // Usar todas para ver detalles
   const i = inscriptions.find(ins => ins.id === id);
   if (!i) return;
 
@@ -223,7 +293,7 @@ async function restoreInscription(id) {
 }
 
 async function exportInscriptions() {
-  const inscriptions = await getInscriptions();
+  const inscriptions = await getInscriptions(); // Solo no archivados
   if (inscriptions.length === 0) {
     Swal.fire({
       icon: 'info',
@@ -255,9 +325,17 @@ async function exportInscriptions() {
 }
 
 async function openInscription(courseId) {
-  const courses = await getCourses();
+  const courses = await getCourses(); // Solo cursos no archivados
   const course = courses.find(c => c.id === courseId);
-  if (!course) return;
+  if (!course) {
+    Swal.fire({
+      icon: 'info',
+      title: 'Curso no disponible',
+      text: 'Este curso no está disponible para inscripciones.',
+      confirmButtonColor: '#c9a96e'
+    });
+    return;
+  }
 
   if (course.status !== 'Publicado') {
     Swal.fire({
@@ -270,7 +348,7 @@ async function openInscription(courseId) {
   }
 
   if (course.max_people && course.max_people !== 'Ilimitado') {
-    const inscriptions = await getInscriptions();
+    const inscriptions = await getInscriptions(); // Solo no archivados
     const count = inscriptions.filter(i => i.course_id === courseId && i.status !== 'Cancelado').length;
     const max = parseInt(course.max_people);
     if (count >= max) {
@@ -301,12 +379,20 @@ async function openInscription(courseId) {
 async function submitInscription(e) {
   e.preventDefault();
   const courseId = document.getElementById('inscriptionCourseId').value;
-  const courses = await getCourses();
+  const courses = await getCourses(); // Solo no archivados
   const course = courses.find(c => c.id === courseId);
-  if (!course) return;
+  if (!course) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'El curso no está disponible.',
+      confirmButtonColor: '#c9a96e'
+    });
+    return;
+  }
 
   if (course.max_people && course.max_people !== 'Ilimitado') {
-    const inscriptions = await getInscriptions();
+    const inscriptions = await getInscriptions(); // Solo no archivados
     const count = inscriptions.filter(i => i.course_id === courseId && i.status !== 'Cancelado').length;
     const max = parseInt(course.max_people);
     if (count >= max) {
@@ -386,3 +472,21 @@ async function submitInscription(e) {
     });
   }
 }
+
+// ============================================================
+// ===== EXPORTAR FUNCIONES GLOBALES =====
+// ============================================================
+
+window.getInscriptions = getInscriptions;
+window.getAllInscriptions = getAllInscriptions;
+window.getInscriptionsByCourse = getInscriptionsByCourse;
+window.saveInscriptionToSupabase = saveInscriptionToSupabase;
+window.updateInscriptionStatus = updateInscriptionStatus;
+window.renderInscriptions = renderInscriptions;
+window.viewDetail = viewDetail;
+window.markAsPaid = markAsPaid;
+window.cancelInscription = cancelInscription;
+window.restoreInscription = restoreInscription;
+window.exportInscriptions = exportInscriptions;
+window.openInscription = openInscription;
+window.submitInscription = submitInscription;

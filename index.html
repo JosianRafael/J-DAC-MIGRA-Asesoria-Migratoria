@@ -13,6 +13,10 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Librerías para certificados -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
   <style>
     /* Asegurar que SweetAlert2 siempre esté por encima de todo */
     .swal2-container {
@@ -902,6 +906,39 @@
     }
     .status-result .status-detail strong {
       font-weight: 600;
+    }
+    .status-result .certificate-section {
+      margin-top: 12px;
+      padding: 16px 20px;
+      background: #e8f5e9;
+      border-radius: 16px;
+      border: 1px solid #a5d6a7;
+    }
+    .status-result .certificate-section .btn {
+      margin-top: 10px;
+    }
+    .status-result .certificate-revoked {
+      background: #ffebee;
+      border-color: #ef9a9a;
+    }
+    .status-result .btn-download-cert {
+      background: #0b2b4a;
+      color: white;
+      padding: 10px 24px;
+      border-radius: 60px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .status-result .btn-download-cert:hover {
+      background: #1a3f61;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
     }
 
     footer {
@@ -2527,45 +2564,117 @@
   </div>
 </div>
 
-<!-- ===== MODAL PANEL ADMIN ===== -->
+<!-- ===== MODAL PANEL ADMIN (ACTUALIZADO CON CERTIFICADOS) ===== -->
 <div class="admin-overlay" id="adminModal">
   <div class="admin-modal">
     <button class="close-btn" id="closeAdmin">&times;</button>
     <h3> Panel del Administrador</h3>
     <p>Gestiona todas las inscripciones de los cursos.</p>
 
-    <div class="table-filters">
-      <input type="text" id="searchInscription" placeholder="🔍 Buscar por nombre..." oninput="renderInscriptions()" />
-      <select id="filterCourse" onchange="renderInscriptions()">
-        <option value="">Todos los cursos</option>
-      </select>
-      <select id="filterStatus" onchange="renderInscriptions()">
-        <option value="">Todos los estados</option>
-        <option value="Pagado">Pagado</option>
-        <option value="Pendiente">Pendiente</option>
-        <option value="Cancelado">Cancelado</option>
-        <option value="Confirmado">Confirmado</option>
-      </select>
-      <button class="btn btn-sm btn-primary" onclick="exportInscriptions()">📥 Exportar Excel</button>
+    <!-- NUEVO: Menú lateral con pestañas -->
+    <div style="display:flex; gap:0; margin-bottom:20px; border-bottom:2px solid #eef3f9;">
+      <button class="admin-tab active" data-tab="dashboard" onclick="switchAdminTab('dashboard')" style="padding:10px 20px; background:none; border:none; font-weight:600; color:#0b2b4a; cursor:pointer; border-bottom:3px solid #c9a96e; font-size:0.85rem; transition:all 0.2s;">
+        <i class="fas fa-chart-pie"></i> Dashboard
+      </button>
+      <button class="admin-tab" data-tab="courses" onclick="switchAdminTab('courses')" style="padding:10px 20px; background:none; border:none; font-weight:600; color:#6a7f94; cursor:pointer; border-bottom:3px solid transparent; font-size:0.85rem; transition:all 0.2s;">
+        <i class="fas fa-book"></i> Cursos
+      </button>
+      <button class="admin-tab" data-tab="inscriptions" onclick="switchAdminTab('inscriptions')" style="padding:10px 20px; background:none; border:none; font-weight:600; color:#6a7f94; cursor:pointer; border-bottom:3px solid transparent; font-size:0.85rem; transition:all 0.2s;">
+        <i class="fas fa-pen"></i> Inscripciones
+      </button>
+      <button class="admin-tab" data-tab="certificates" onclick="switchAdminTab('certificates')" style="padding:10px 20px; background:none; border:none; font-weight:600; color:#6a7f94; cursor:pointer; border-bottom:3px solid transparent; font-size:0.85rem; transition:all 0.2s;">
+        <i class="fas fa-certificate"></i> Certificados
+      </button>
     </div>
 
-    <div class="table-responsive">
-      <table>
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Curso</th>
-            <th>Teléfono</th>
-            <th>Correo</th>
-            <th>Fecha</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="inscriptionTableBody"></tbody>
-      </table>
+    <!-- Pestaña: Dashboard -->
+    <div id="adminTabDashboard" class="admin-tab-content">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:16px; margin-top:12px;">
+        <div style="background:#f5f9ff; padding:20px; border-radius:16px; text-align:center;">
+          <div style="font-size:2rem; font-weight:800; color:#0b2b4a;" id="dashTotalCourses">0</div>
+          <div style="color:#6a7f94; font-size:0.85rem;">Cursos totales</div>
+        </div>
+        <div style="background:#f5f9ff; padding:20px; border-radius:16px; text-align:center;">
+          <div style="font-size:2rem; font-weight:800; color:#0b2b4a;" id="dashTotalInscriptions">0</div>
+          <div style="color:#6a7f94; font-size:0.85rem;">Inscripciones</div>
+        </div>
+        <div style="background:#f5f9ff; padding:20px; border-radius:16px; text-align:center;">
+          <div style="font-size:2rem; font-weight:800; color:#0b2b4a;" id="dashTotalCertificates">0</div>
+          <div style="color:#6a7f94; font-size:0.85rem;">Certificados emitidos</div>
+        </div>
+        <div style="background:#f5f9ff; padding:20px; border-radius:16px; text-align:center;">
+          <div style="font-size:2rem; font-weight:800; color:#0b2b4a;" id="dashFinishedCourses">0</div>
+          <div style="color:#6a7f94; font-size:0.85rem;">Cursos finalizados</div>
+        </div>
+      </div>
     </div>
-    <p id="noInscriptions" style="text-align:center; color:#6a7f94; padding:20px; display:none;">No hay inscripciones registradas.</p>
+
+    <!-- Pestaña: Cursos -->
+    <div id="adminTabCourses" class="admin-tab-content" style="display:none;">
+      <div style="margin-bottom:12px;">
+        <button class="btn btn-sm btn-primary" onclick="document.getElementById('coursesModal').classList.add('active')">
+          <i class="fas fa-plus"></i> Nuevo curso
+        </button>
+      </div>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Curso</th>
+              <th>Estado</th>
+              <th>Inscritos</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="adminCourseTableBody"></tbody>
+        </table>
+      </div>
+      <p id="noAdminCourses" style="text-align:center; color:#6a7f94; padding:20px; display:none;">No hay cursos creados.</p>
+    </div>
+
+    <!-- Pestaña: Inscripciones (contenido original) -->
+    <div id="adminTabInscriptions" class="admin-tab-content" style="display:none;">
+      <div class="table-filters">
+        <input type="text" id="searchInscription" placeholder="🔍 Buscar por nombre..." oninput="renderInscriptions()" />
+        <select id="filterCourse" onchange="renderInscriptions()">
+          <option value="">Todos los cursos</option>
+        </select>
+        <select id="filterStatus" onchange="renderInscriptions()">
+          <option value="">Todos los estados</option>
+          <option value="Pagado">Pagado</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Cancelado">Cancelado</option>
+          <option value="Confirmado">Confirmado</option>
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="exportInscriptions()">📥 Exportar Excel</button>
+      </div>
+
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Curso</th>
+              <th>Teléfono</th>
+              <th>Correo</th>
+              <th>Fecha</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="inscriptionTableBody"></tbody>
+        </table>
+      </div>
+      <p id="noInscriptions" style="text-align:center; color:#6a7f94; padding:20px; display:none;">No hay inscripciones registradas.</p>
+    </div>
+
+    <!-- Pestaña: Certificados (NUEVA) -->
+    <div id="adminTabCertificates" class="admin-tab-content" style="display:none;">
+      <div id="certCourseListContainer">
+        <p style="color:#6a7f94; padding:12px 0;">Cargando cursos finalizados...</p>
+      </div>
+      <div id="certManagementContainer" style="display:none;"></div>
+    </div>
   </div>
 </div>
 
@@ -2677,17 +2786,16 @@
 <script src="js/index/courses.js" defer></script>
 <script src="js/index/testimonials.js" defer></script>
 <script src="js/index/inscriptions.js" defer></script>
+<script src="js/index/certificates.js" defer></script>
 <script src="js/index/main.js" defer></script>
 
 <!-- ===== FUNCIÓN VERIFICADOR DE ESTADO ===== -->
 <script>
-  // Función para verificar el estado de una inscripción por teléfono
-  async function checkStatus() {
+   async function checkStatus() {
     const phoneInput = document.getElementById('statusPhone');
     const resultDiv = document.getElementById('statusResult');
     const phone = phoneInput.value.trim();
 
-    // Validar que el teléfono no esté vacío
     if (!phone) {
       resultDiv.className = 'status-result error show';
       resultDiv.innerHTML = `
@@ -2700,25 +2808,24 @@
       return;
     }
 
-    // Mostrar loading
     resultDiv.className = 'status-result show';
     resultDiv.innerHTML = `
       <div style="text-align:center; padding:10px 0;">
         <i class="fas fa-spinner fa-spin" style="font-size:1.5rem; color:#c9a96e;"></i>
-        <div style="margin-top:8px; color:#3e5a75;">Buscando tu inscripción...</div>
+        <div style="margin-top:8px; color:#3e5a75;">Buscando tus inscripciones...</div>
       </div>
     `;
 
     try {
-      // Buscar en la tabla inscriptions por el número de teléfono
-      const { data, error } = await SUPABASE
+      // Buscar TODAS las inscripciones por teléfono
+      const { data: inscriptions, error: inscError } = await SUPABASE
         .from('inscriptions')
         .select('*')
         .eq('phone', phone)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error al consultar:', error);
+      if (inscError) {
+        console.error('Error al consultar:', inscError);
         resultDiv.className = 'status-result error show';
         resultDiv.innerHTML = `
           <div>
@@ -2730,8 +2837,7 @@
         return;
       }
 
-      // Verificar si se encontraron inscripciones
-      if (!data || data.length === 0) {
+      if (!inscriptions || inscriptions.length === 0) {
         resultDiv.className = 'status-result error show';
         resultDiv.innerHTML = `
           <div>
@@ -2743,8 +2849,9 @@
         return;
       }
 
-      // Tomar la inscripción más reciente
-      const inscription = data[0];
+      // Obtener información de estado general (la primera inscripción para el estado general)
+      const firstInscription = inscriptions[0];
+      
       const statusMap = {
         'Pagado': { class: 'success', icon: '✅', label: 'Pagado - Confirmado' },
         'Confirmado': { class: 'success', icon: '✅', label: 'Confirmado' },
@@ -2752,28 +2859,221 @@
         'Cancelado': { class: 'canceled', icon: '❌', label: 'Cancelado' }
       };
 
-      const statusInfo = statusMap[inscription.status] || { class: 'pending', icon: '📋', label: inscription.status || 'En proceso' };
+      const statusInfo = statusMap[firstInscription.status] || { class: 'pending', icon: '📋', label: firstInscription.status || 'En proceso' };
 
-      // Mostrar el resultado
+      // ============================================================
+      // CONSTRUIR LISTA DE TODOS LOS CERTIFICADOS
+      // ============================================================
+      
+      let certificatesListHtml = '';
+      let hasValidCertificates = false;
+      let certificateCount = 0;
+
+      // Recorrer TODAS las inscripciones
+      for (const inscription of inscriptions) {
+        // Buscar certificado para esta inscripción
+        const { data: certificate, error: certError } = await SUPABASE
+          .from('certificates')
+          .select('*')
+          .eq('inscription_id', inscription.id)
+          .maybeSingle();
+
+        if (certError) {
+          console.error('Error al buscar certificado:', certError);
+        }
+
+        // Obtener información del curso
+        const { data: course, error: courseError } = await SUPABASE
+          .from('products')
+          .select('status, name, modality, date')
+          .eq('id', inscription.course_id)
+          .maybeSingle();
+
+        if (courseError) {
+          console.error('Error al obtener curso:', courseError);
+        }
+
+        const isCourseFinished = course && (course.status === 'Finalizado' || course.status === 'Archivado');
+        const isCourseActive = course && (course.status === 'Publicado' || course.status === 'Próximamente');
+
+        // Determinar el estado del certificado para esta inscripción
+        let certStatusHtml = '';
+        let certActionsHtml = '';
+        let certStatusClass = '';
+
+        if (certificate) {
+          if (certificate.status === 'valid') {
+            hasValidCertificates = true;
+            certificateCount++;
+            certStatusClass = 'valid';
+            certStatusHtml = `
+              <span style="color:#28a745; font-weight:700;">✅ Certificado disponible</span>
+            `;
+            certActionsHtml = `
+              <button class="btn-download-cert" onclick="downloadCertificate('${certificate.id}')" style="
+                background:#0b2b4a;
+                color:white;
+                padding:8px 20px;
+                border:none;
+                border-radius:60px;
+                font-weight:600;
+                cursor:pointer;
+                transition:all 0.3s ease;
+                display:inline-flex;
+                align-items:center;
+                gap:8px;
+                margin-top:8px;
+                font-size:0.85rem;
+              ">
+                <i class="fas fa-download"></i> Descargar certificado
+              </button>
+              <button onclick="viewCertificateDetails('${certificate.id}')" style="
+                background:#c9a96e;
+                color:#0b1e33;
+                padding:8px 20px;
+                border:none;
+                border-radius:60px;
+                font-weight:600;
+                cursor:pointer;
+                transition:all 0.3s ease;
+                display:inline-flex;
+                align-items:center;
+                gap:8px;
+                margin-top:8px;
+                font-size:0.85rem;
+                margin-left:8px;
+              ">
+                <i class="fas fa-eye"></i> Ver
+              </button>
+            `;
+          } else if (certificate.status === 'revoked') {
+            certStatusClass = 'revoked';
+            certStatusHtml = `
+              <span style="color:#dc3545; font-weight:700;">❌ Certificado no aprobado</span>
+            `;
+          } else {
+            certStatusClass = 'pending';
+            certStatusHtml = `
+              <span style="color:#856404; font-weight:700;">⏳ Certificado en proceso</span>
+            `;
+          }
+        } else {
+          // No existe certificado
+          if (isCourseFinished) {
+            certStatusClass = 'not-issued';
+            certStatusHtml = `
+              <span style="color:#dc3545; font-weight:700;">❌ Certificado no emitido</span>
+            `;
+          } else if (isCourseActive) {
+            certStatusClass = 'in-progress';
+            certStatusHtml = `
+              <span style="color:#856404; font-weight:700;">⏳ Curso en progreso</span>
+            `;
+          } else {
+            certStatusClass = 'unknown';
+            certStatusHtml = `
+              <span style="color:#6a7f94; font-weight:700;">ℹ️ Información pendiente</span>
+            `;
+          }
+        }
+
+        // Construir tarjeta de certificado para esta inscripción
+        certificatesListHtml += `
+          <div style="
+            background: ${certificate && certificate.status === 'valid' ? '#f0f9f0' : '#f5f9ff'};
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            border-left: 4px solid ${certificate && certificate.status === 'valid' ? '#28a745' : '#c9a96e'};
+            transition: all 0.2s ease;
+          ">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+              <div style="flex:1;">
+                <div style="font-weight:700; color:#0b1e33; font-size:1rem;">
+                  ${inscription.course_name || 'Curso no especificado'}
+                  ${course && course.status === 'Archivado' ? '<span style="font-size:0.7rem; color:#6a7f94; margin-left:8px;">📦 Archivado</span>' : ''}
+                </div>
+                <div style="font-size:0.85rem; color:#3e5a75; margin-top:4px;">
+                  <span><i class="fas fa-calendar"></i> ${inscription.inscription_date || inscription.date || 'Fecha no registrada'}</span>
+                  <span style="margin-left:12px;"><i class="fas fa-user"></i> ${inscription.name}</span>
+                  ${certificate ? `<span style="margin-left:12px;"><i class="fas fa-code"></i> ${certificate.code}</span>` : ''}
+                </div>
+                <div style="margin-top:6px;">
+                  ${certStatusHtml}
+                </div>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                ${certActionsHtml}
+              </div>
+            </div>
+            ${certificate && certificate.status === 'valid' ? `
+              <div style="margin-top:8px; padding-top:8px; border-top:1px solid #eef3f9; font-size:0.8rem; color:#6a7f94;">
+                <i class="fas fa-check-circle" style="color:#28a745;"></i> 
+                Certificado emitido el ${formatDate(certificate.generated_at)}
+              </div>
+            ` : ''}
+            ${!certificate && isCourseFinished ? `
+              <div style="margin-top:8px; padding-top:8px; border-top:1px solid #eef3f9; font-size:0.8rem; color:#6a7f94;">
+                <i class="fas fa-info-circle"></i> 
+                Contacta al administrador para más información sobre tu certificado.
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      // ============================================================
+      // CONSTRUIR RESULTADO COMPLETO
+      // ============================================================
+
+      let summaryHtml = '';
+      if (hasValidCertificates) {
+        summaryHtml = `
+          <div style="
+            background: #d4edda;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            border: 1px solid #b7d4c5;
+            color: #155724;
+          ">
+            <i class="fas fa-check-circle"></i> 
+            Tienes <strong>${certificateCount}</strong> certificado${certificateCount > 1 ? 's' : ''} disponible${certificateCount > 1 ? 's' : ''} para descargar.
+          </div>
+        `;
+      }
+
+      // Mostrar el resultado completo
       resultDiv.className = `status-result ${statusInfo.class} show`;
       resultDiv.innerHTML = `
         <div>
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <!-- Estado general del usuario -->
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; padding-bottom:12px; border-bottom:2px solid #eef3f9;">
             <span class="status-icon">${statusInfo.icon}</span>
-            <span class="status-title">Estado: ${statusInfo.label}</span>
+            <div>
+              <span class="status-title">Estado general: ${statusInfo.label}</span>
+              <div style="font-size:0.85rem; color:#3e5a75;">
+                <strong>${inscriptions.length}</strong> curso${inscriptions.length > 1 ? 's' : ''} en total
+                ${hasValidCertificates ? ` · <strong>${certificateCount}</strong> certificado${certificateCount > 1 ? 's' : ''} disponible${certificateCount > 1 ? 's' : ''}` : ''}
+              </div>
+            </div>
           </div>
-          <div class="status-detail">
-            <strong>Curso:</strong> ${inscription.course_name || 'No especificado'}<br>
-            <strong>Fecha de inscripción:</strong> ${inscription.inscription_date || inscription.date || 'No registrada'}<br>
-            <strong>Nombre:</strong> ${inscription.name || 'No registrado'}
-            ${inscription.status === 'Pagado' || inscription.status === 'Confirmado' ? 
-              `<br><span style="color:#28a745; font-weight:600;">✅ Tu inscripción está confirmada. ¡Nos vemos en el curso!</span>` : 
-              inscription.status === 'Pendiente' ? 
-              `<br><span style="color:#856404; font-weight:600;">⏳ Tu pago está pendiente de confirmación. En breve nos comunicaremos contigo.</span>` :
-              inscription.status === 'Cancelado' ? 
-              `<br><span style="color:#721c24; font-weight:600;">❌ Tu inscripción ha sido cancelada. Si tienes dudas, contáctanos.</span>` :
-              ''
-            }
+
+          ${summaryHtml}
+
+          <!-- Lista de certificados por curso -->
+          <div style="margin-top:8px;">
+            <div style="font-weight:600; color:#0b1e33; margin-bottom:8px; font-size:0.95rem;">
+              <i class="fas fa-certificate" style="color:#c9a96e;"></i> 
+              Detalle de tus cursos:
+            </div>
+            ${certificatesListHtml}
+          </div>
+
+          <!-- Pie de página -->
+          <div style="margin-top:16px; padding-top:12px; border-top:1px solid #eef3f9; font-size:0.8rem; color:#6a7f94; text-align:center;">
+            <i class="fas fa-shield-alt" style="color:#c9a96e;"></i>
+            Si tienes dudas sobre tus certificados, contacta con el administrador.
           </div>
         </div>
       `;
@@ -2791,7 +3091,165 @@
     }
   }
 
-  // Permitir presionar Enter en el campo de teléfono
+  // ============================================================
+  // FUNCIÓN PARA VER DETALLES DE CERTIFICADO
+  // ============================================================
+  
+  async function viewCertificateDetails(certId) {
+    try {
+      const { data: cert, error } = await SUPABASE
+        .from('certificates')
+        .select('*')
+        .eq('id', certId)
+        .single();
+
+      if (error || !cert) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'No se pudo obtener el certificado.',
+          confirmButtonColor: '#c9a96e'
+        });
+        return;
+      }
+
+      // Obtener datos de inscripción y curso
+      const [inscriptionRes, courseRes] = await Promise.all([
+        SUPABASE.from('inscriptions').select('*').eq('id', cert.inscription_id).single(),
+        SUPABASE.from('products').select('*').eq('id', cert.course_id).single()
+      ]);
+
+      const inscription = inscriptionRes.data;
+      const course = courseRes.data;
+
+      Swal.fire({
+        title: '📜 Detalle del Certificado',
+        html: `
+          <div style="text-align:left;">
+            <p><strong>Código:</strong> ${cert.code}</p>
+            <p><strong>Estado:</strong> <span style="color:#28a745; font-weight:700;">✅ Válido</span></p>
+            <p><strong>Fecha de emisión:</strong> ${formatDate(cert.generated_at)}</p>
+            <hr style="margin:12px 0; border-color:#eef3f9;">
+            <p><strong>Estudiante:</strong> ${inscription?.name || 'No disponible'}</p>
+            <p><strong>Curso:</strong> ${course?.name || 'No disponible'}</p>
+            <p><strong>Modalidad:</strong> ${course?.modality || 'No especificada'}</p>
+            <p><strong>Facilitadora:</strong> Lic. Carolin Lorenzo Lorenzo</p>
+          </div>
+        `,
+        confirmButtonColor: '#c9a96e',
+        width: '500px',
+        showCancelButton: true,
+        cancelButtonText: 'Cerrar',
+        confirmButtonText: '📥 Descargar certificado',
+        preConfirm: () => {
+          downloadCertificate(certId);
+          return false;
+        }
+      });
+
+    } catch (err) {
+      console.error('Error en viewCertificateDetails:', err);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Ocurrió un error al ver el certificado.',
+        confirmButtonColor: '#c9a96e'
+      });
+    }
+  }
+
+  // ============================================================
+  // FUNCIÓN PARA FORMATEAR FECHA
+  // ============================================================
+
+  function formatDate(dateStr) {
+    if (!dateStr) return 'No especificada';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+
+  // ============================================================
+  // FUNCIÓN PARA DESCARGAR CERTIFICADO
+  // ============================================================
+
+  async function downloadCertificate(certId) {
+    try {
+      const { data: cert, error } = await SUPABASE
+        .from('certificates')
+        .select('*')
+        .eq('id', certId)
+        .single();
+
+      if (error || !cert) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'No se pudo obtener el certificado.',
+          confirmButtonColor: '#c9a96e'
+        });
+        return;
+      }
+
+      if (cert.status !== 'valid') {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Certificado no válido',
+          text: 'Este certificado no está disponible para descarga.',
+          confirmButtonColor: '#c9a96e'
+        });
+        return;
+      }
+
+      // Registrar descarga en log
+      await SUPABASE
+        .from('certificates_log')
+        .insert({
+          certificate_id: certId,
+          action: 'downloaded',
+          user_agent: navigator.userAgent
+        });
+
+      // Obtener datos de la inscripción y curso
+      const [inscriptionRes, courseRes] = await Promise.all([
+        SUPABASE.from('inscriptions').select('*').eq('id', cert.inscription_id).single(),
+        SUPABASE.from('products').select('*').eq('id', cert.course_id).single()
+      ]);
+
+      const inscription = inscriptionRes.data;
+      const course = courseRes.data;
+
+      if (!inscription || !course) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'No se encontraron los datos del certificado.',
+          confirmButtonColor: '#c9a96e'
+        });
+        return;
+      }
+
+      // Generar y descargar PDF
+      await generateAndDownloadPDF(cert, inscription, course);
+
+    } catch (err) {
+      console.error('Error en downloadCertificate:', err);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Ocurrió un error al descargar el certificado.',
+        confirmButtonColor: '#c9a96e'
+      });
+    }
+  }
+
+  // ============================================================
+  // PERMITIR PRESIONAR ENTER EN EL CAMPO DE TELÉFONO
+  // ============================================================
+
   document.addEventListener('DOMContentLoaded', function() {
     const phoneInput = document.getElementById('statusPhone');
     if (phoneInput) {
