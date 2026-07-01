@@ -91,7 +91,7 @@ async function renderTestimonials() {
   const testimonials = await getTestimonials();
 
   if (testimonials.length === 0) {
-    feed.innerHTML = '<p style="text-align:center; color:#6a7f94; padding:20px 0;">No hay reseñas aún. Agrega una desde el panel de administración.</p>';
+    feed.innerHTML = '<p style="text-align:center; color:#6a7f94; padding:20px 0;">No hay reseñas aún.</p>';
     document.getElementById('testimonialPagination').innerHTML = '';
     return;
   }
